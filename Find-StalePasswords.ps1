@@ -16,6 +16,8 @@ $dateLimit = (Get-Date).AddDays(-90).ToFileTime()
 $null = New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent)
 $users = Get-ADUser -Filter "Enabled -eq 'True' -and (pwdLastSet -eq 0 -or pwdLastSet -lt $dateLimit)" -Properties pwdLastSet, PasswordLastSet
 
+Write-Host "Found $($users.Count) users with stale passwords" -ForegroundColor Yellow
+
 foreach ($user in $users) {
 $reason = if ($user.pwdLastSet -eq 0) {"never changed"} else {"Older than 90 days"}
 $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $($user.Name), $reason, $($user.PasswordLastSet)"
