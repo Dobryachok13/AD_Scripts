@@ -1,0 +1,1 @@
+WriteHost "привет, Git!" -ForeGroundColor Green
