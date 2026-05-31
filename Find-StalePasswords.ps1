@@ -20,8 +20,7 @@ Write-Host "Found $($users.Count) users with stale passwords" -ForegroundColor Y
 
 foreach ($user in $users) {
 $reason = if ($user.pwdLastSet -eq 0) {"never changed"} else {"Older than 90 days"}
-$computerName = $env:COMPUTERNAME
-$line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $computerName, $($user.Name), $reason, $($user.PasswordLastSet)"
+$line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $($user.Name), $reason, $($user.PasswordLastSet)"
 Add-Content -Path $LogPath -Value $line
 }
 
