@@ -104,8 +104,8 @@ if ($existingTask) {
 # ===== 5. Финальная проверка =====
 Write-Host "`nFinal verification..." -ForegroundColor Yellow
 $allGood = $true
-if (-not (Test-Path $gitExe)) { Write-Host "Git not found!" -ForegroundColor Red; $allGood = $false }
-if (-not (Test-Path $pwshExe)) { Write-Host "PowerShell 7 not found!" -ForegroundColor Red; $allGood = $false }
+if (-not ($gitExe)) { Write-Host "Git not found!" -ForegroundColor Red; $allGood = $false }
+if (-not ($pwshExe)) { Write-Host "PowerShell 7 not found!" -ForegroundColor Red; $allGood = $false }
 if (-not (Test-Path "$Destination\Find-StalePasswords.ps1")) { Write-Host "Main script not found!" -ForegroundColor Red; $allGood = $false }
 
 if ($allGood) {
