@@ -24,7 +24,8 @@ function Send-TelegramMessage {
         parse_mode = "HTML"
     }
     try {
-        Invoke-RestMethod -Uri $uri -Method Post -Body $body -ErrorAction Stop | Out-Null
+        $proxyUri = "http://127.0.0.1:1443"
+        Invoke-RestMethod -Uri $uri -Method Post -Body $body -Proxy $proxyUri -ErrorAction Stop | Out-Null
     }
     catch {
         Write-Warning "Failed to send Telegram message: $_"
