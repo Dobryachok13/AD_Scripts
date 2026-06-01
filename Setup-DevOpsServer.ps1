@@ -46,8 +46,8 @@ if ($gitExe) {
     Start-Process -FilePath $gitInstaller -ArgumentList "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS" -Wait -NoNewWindow
     Remove-Item $gitInstaller -Force
     Write-Host "Git installed successfully" -ForegroundColor Green
-    $gitExe = Get-Command git.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue
 }
+$gitExe = Get-Command git.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue
 
 # Добавляем Git в PATH для текущей сессии
 $env:Path += ";C:\Program Files\Git\bin"
@@ -64,7 +64,20 @@ if ($pwshExe) {
     Start-Process msiexec.exe -ArgumentList "/i `"$ps7Installer`" /quiet /norestart" -Wait -NoNewWindow
     Remove-Item $ps7Installer -Force
     Write-Host "PowerShell 7 installed successfully" -ForegroundColor Green
-    $pwshExe = Get-Command pwsh.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue
+}
+$pwshExe = Get-Command pwsh.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue
+if (-not $pwshExe) {
+    $possiblePaths = @(
+    "C:\Program Files\PowerShell\7\pwsh.exe",
+    "C:\Program Files\PowerShell\7-preview\pwsh.exe"
+)
+    $manualPath = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($manualPath) {
+        $pwshExe = $manualPath
+        $pwshDir = Split-Path $manualPath -Parent
+        $env:Path += ";$pwshDir"
+        Write-Host "PowerShell 7 found at $pwshExe and added to PATH" -ForegroundColor Yellow
+    }
 }
 
 # ===== 3. Клонирование или обновление репозитория =====
