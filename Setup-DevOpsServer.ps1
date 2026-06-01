@@ -15,6 +15,26 @@ param(
     [string]$Branch = "setup-script"
 )
 
+# Функция поиска pwsh.exe (руками, если Get-Command не сработал)
+function Find-PwshExe {
+    $pwshExe = Get-Command pwsh.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue
+    if ($pwshExe) { return $pwshExe }
+
+    $possiblePaths = @(
+        "C:\Program Files\PowerShell\7\pwsh.exe",
+        "C:\Program Files\PowerShell\7-preview\pwsh.exe",
+        "$env:LOCALAPPDATA\Microsoft\WindowsApps\pwsh.exe"
+    )
+    $manualPath = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($manualPath) {
+        $pwshDir = Split-Path $manualPath -Parent
+        $env:Path += ";$pwshDir"
+        Write-Host "PowerShell 7 found at $manualPath and added to PATH" -ForegroundColor Yellow
+        return $manualPath
+    }
+    return $null
+}
+
 # Переключаемся в корень диска C:\
 Set-Location C:\
 
@@ -53,7 +73,7 @@ $gitExe = Get-Command git.exe -ErrorAction SilentlyContinue | Select-Object -Exp
 $env:Path += ";C:\Program Files\Git\bin"
 
 # ===== 2. Установка PowerShell 7 =====
-$pwshExe = Get-Command pwsh.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue
+$pwshExe = Find-PwshExe
 if ($pwshExe) {
     Write-Host "PowerShell 7 already installed: $pwshExe" -ForegroundColor Green
 } else {
@@ -65,20 +85,7 @@ if ($pwshExe) {
     Remove-Item $ps7Installer -Force
     Write-Host "PowerShell 7 installed successfully" -ForegroundColor Green
 }
-$pwshExe = Get-Command pwsh.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue
-if (-not $pwshExe) {
-    $possiblePaths = @(
-    "C:\Program Files\PowerShell\7\pwsh.exe",
-    "C:\Program Files\PowerShell\7-preview\pwsh.exe"
-)
-    $manualPath = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if ($manualPath) {
-        $pwshExe = $manualPath
-        $pwshDir = Split-Path $manualPath -Parent
-        $env:Path += ";$pwshDir"
-        Write-Host "PowerShell 7 found at $pwshExe and added to PATH" -ForegroundColor Yellow
-    }
-}
+$pwshExe = Find-PwshExe
 
 # ===== 3. Клонирование или обновление репозитория =====
 # Убедимся, что целевая папка существует
