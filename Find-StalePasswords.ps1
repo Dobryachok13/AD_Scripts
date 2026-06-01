@@ -24,7 +24,7 @@ function Send-TelegramMessage {
         parse_mode = "HTML"
     }
     try {
-        $proxyUri = "http://157.22.176.211:443"
+        $proxyUri = "http://176.202.20.203:8080"
         Invoke-RestMethod -Uri $uri -Method Post -Body $body -Proxy $proxyUri -ErrorAction Stop | Out-Null
     }
     catch {
