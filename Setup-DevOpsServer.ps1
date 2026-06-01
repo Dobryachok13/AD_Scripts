@@ -12,7 +12,7 @@
 param(
     [string]$RepoUrl = "https://github.com/Dobryachok13/AD_Scripts.git",
     [string]$Destination = "C:\AD_Scripts",
-    [string]$Branch = "setup-script"
+    [string]$Branch = "feature/setup-script"
 )
 
 # Функция поиска pwsh.exe (руками, если Get-Command не сработал)
