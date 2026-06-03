@@ -12,7 +12,8 @@
 param(
     [string]$RepoUrl = "https://github.com/Dobryachok13/AD_Scripts.git",
     [string]$Destination = "C:\AD_Scripts",
-    [string]$Branch = "feature/setup-script"
+    [string]$Branch = "feature/setup-script",
+    [string]$Core = "C:\"
 )
 
 # Функция поиска pwsh.exe (руками, если Get-Command не сработал)
@@ -106,7 +107,60 @@ if (Test-Path ".git") {
     git clone --branch $Branch $RepoUrl .
 }
 
-# ===== 4. Настройка планировщика задач =====
+# ===== 4. Установка GitHub Actions Runner =====
+
+# ===== Получение токена регистрации раннера через API =====
+$pat = [Environment]::GetEnvironmentVariable("GITHUB_PAT", "Machine")
+if (-not $pat) {
+    Write-Host "GITHUB_PAT environment variable not found. Please set it first." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Obtaining runner registration token from GitHub API..." -ForegroundColor Cyan
+$apiUrl = "https://api.github.com/repos/Dobryachok13/AD_Scripts/actions/runners/registration-token"
+$headers = @{
+    "Authorization" = "Bearer $pat"
+    "Accept" = "application/vnd.github+json"
+}
+
+try {
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers
+    $runnerToken = $response.token
+    Write-Host "Registration token obtained successfully (expires at: $($response.expires_at))" -ForegroundColor Green
+} catch {
+    Write-Host "Failed to obtain registration token: $_" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "`n[4/6] Checking GitHub Actions Runner..." -ForegroundColor Yellow
+$runnerDir = "C:\actions-runner"
+
+Set-Location $Core
+
+if (Test-Path "$runnerDir\.runner") {
+    Write-Host "Runner service already exists, skipping" -ForegroundColor Green
+} else {
+    Write-Host "Downloading GitHub Actions runner..." -ForegroundColor Cyan
+    $runnerUrl = "https://github.com/actions/runner/releases/download/v2.334.0/actions-runner-win-x64-2.334.0.zip"
+    $runnerZip = "$env:TEMP\runner.zip"
+    Invoke-WebRequest -Uri $runnerUrl -OutFile $runnerZip -UseBasicParsing
+    
+    # Создаём папку и распаковываем
+    New-Item -ItemType Directory -Path $runnerDir -Force | Out-Null
+    Expand-Archive -Path $runnerZip -DestinationPath $runnerDir -Force
+    Remove-Item $runnerZip -Force
+    
+    # Регистрируем runner (токен нужно получить из GitHub)
+    Write-Host "Registering runner with GitHub..." -ForegroundColor Cyan
+    
+    Push-Location $runnerDir
+    .\config.cmd --unattended --url $RepoUrl --token $runnerToken --name "DEV-OPS-Runner" --labels "windows,devops" --runasservice
+    Pop-Location
+    
+    Write-Host "Runner installed and configured as service" -ForegroundColor Green
+}
+
+# ===== 5. Настройка планировщика задач =====
 $taskName = "AD_StalePasswords_Check"
 $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 if ($existingTask) {
@@ -121,7 +175,7 @@ if ($existingTask) {
     Write-Host "Scheduled task created successfully" -ForegroundColor Green
 }
 
-# ===== 5. Финальная проверка =====
+# ===== 6. Финальная проверка =====
 Write-Host "`nFinal verification..." -ForegroundColor Yellow
 $allGood = $true
 if (-not ($gitExe)) { Write-Host "Git not found!" -ForegroundColor Red; $allGood = $false }
