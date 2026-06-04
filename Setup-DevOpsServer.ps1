@@ -107,21 +107,20 @@ if (Test-Path ".git") {
     git clone --branch $Branch $RepoUrl .
 }
 
-# ===== 4. Установка GitHub Actions Runner (без config.cmd) =====
+# ===== 4. Установка GitHub Actions Runner =====
 Write-Host "`n[4/6] Установка и настройка GitHub Actions Runner..." -ForegroundColor Yellow
 
-# --- Динамические переменные, как ты и хотел ---
 $runnerDir = "C:\actions-runner"
-$runnerName = "$env:COMPUTERNAME-Runner"  # Вот твоя гениальная идея!
-$serviceName = "GitHubActionsRunner.$runnerName"
+$runnerName = "$env:COMPUTERNAME-Runner"
 
 Set-Location $Core
 
 # 4.1. Проверка, не установлен ли уже раннер
-if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
-    Write-Host "Служба раннера '$serviceName' уже существует. Пропускаем установку." -ForegroundColor Green
+$existingSvc = Get-Service -Name "actions.runner.*" -ErrorAction SilentlyContinue
+if ($existingSvc) {
+    Write-Host "Служба раннера '$($existingSvc.Name)' уже существует. Пропускаем установку." -ForegroundColor Green
 } else {
-    # --- 4.2 Скачивание и распаковка (как и было) ---
+    # --- 4.2 Скачивание и распаковка ---
     Write-Host "Скачивание GitHub Actions runner..." -ForegroundColor Cyan
     $runnerUrl = "https://github.com/actions/runner/releases/download/v2.334.0/actions-runner-win-x64-2.334.0.zip"
     $runnerZip = "$env:TEMP\runner.zip"
@@ -132,7 +131,7 @@ if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
     Remove-Item $runnerZip -Force
     Write-Host "Runner распакован в $runnerDir" -ForegroundColor Green
 
-    # --- 4.3. ПОЛУЧЕНИЕ ТОКЕНА ЧЕРЕЗ API (уже было) ---
+    # --- 4.3. ПОЛУЧЕНИЕ ТОКЕНА ЧЕРЕЗ API ---
     $pat = [Environment]::GetEnvironmentVariable("GITHUB_PAT", "Machine")
     if (-not $pat) { Write-Host "GITHUB_PAT не найдена!" -ForegroundColor Red; exit 1 }
     
@@ -145,50 +144,33 @@ if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
         Write-Host "Токен получен, истекает: $($response.expires_at)" -ForegroundColor Green
     } catch { Write-Host "Ошибка получения токена: $_" -ForegroundColor Red; exit 1 }
 
-    # --- 4.4. РЕГИСТРАЦИЯ И КОНФИГУРАЦИЯ (наша магия) ---
+    # --- 4.4. РЕГИСТРАЦИЯ через config.cmd ---
     Write-Host "Регистрация runner'а '$runnerName' на GitHub..." -ForegroundColor Cyan
     Push-Location $runnerDir
 
-    # Файл .runner
-    @"
-poolId = 1
-poolName = "Default"
-agentId = 0
-agentName = $runnerName
-serverUrl = $RepoUrl
-workFolder = _work
-"@ | Out-File -FilePath .runner -Encoding ascii -Force
-
-    # Файл .credentials
-    @"
-$runnerToken
-"@ | Out-File -FilePath .credentials -Encoding ascii -Force
-
-    # Файл settings.json
-    @"
-{
-  "agentId": 0,
-  "agentName": "$runnerName",
-  "poolId": 1,
-  "poolName": "Default",
-  "serverUrl": "$RepoUrl",
-  "workFolder": "_work",
-  "gitHubUrl": "https://github.com",
-  "apiUrl": "https://api.github.com"
-}
-"@ | Out-File -FilePath settings.json -Encoding utf8 -Force
+    $configCmd = ".\config.cmd --unattended --url $RepoUrl --token $runnerToken --name $runnerName --labels windows,devops --runasservice"
+    $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$configCmd`"" -Wait -NoNewWindow -PassThru
 
     Pop-Location
-    Write-Host "Файлы конфигурации созданы." -ForegroundColor Green
 
-    # --- 5. Установка и запуск службы ---
-    Write-Host "Установка и запуск службы '$serviceName'..." -ForegroundColor Cyan
-    Push-Location $runnerDir
-    & .\run.cmd --service install
-    Pop-Location
-    
-    Start-Service -Name $serviceName
-    Write-Host "Служба '$serviceName' успешно запущена." -ForegroundColor Green
+    if ($process.ExitCode -eq 0) {
+        Write-Host "Runner успешно зарегистрирован!" -ForegroundColor Green
+    } else {
+        Write-Host "Ошибка регистрации. Код ошибки: $($process.ExitCode)" -ForegroundColor Red
+        exit 1
+    }
+
+    # --- 4.5. ЗАПУСК СЛУЖБЫ ---
+    $svc = Get-Service -Name "actions.runner.*" -ErrorAction SilentlyContinue
+    if ($svc) {
+        Start-Service -Name $svc.Name
+        Write-Host "Служба '$($svc.Name)' запущена." -ForegroundColor Green
+    } else {
+        Write-Host "Служба не найдена. Запускаем раннер вручную..." -ForegroundColor Yellow
+        Push-Location $runnerDir
+        Start-Process -FilePath ".\run.cmd" -WindowStyle Hidden
+        Pop-Location
+    }
 }
 
 # ===== 5. Настройка планировщика задач =====
