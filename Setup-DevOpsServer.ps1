@@ -107,57 +107,88 @@ if (Test-Path ".git") {
     git clone --branch $Branch $RepoUrl .
 }
 
-# ===== 4. Установка GitHub Actions Runner =====
+# ===== 4. Установка GitHub Actions Runner (без config.cmd) =====
+Write-Host "`n[4/6] Установка и настройка GitHub Actions Runner..." -ForegroundColor Yellow
 
-# ===== Получение токена регистрации раннера через API =====
-$pat = [Environment]::GetEnvironmentVariable("GITHUB_PAT", "Machine")
-if (-not $pat) {
-    Write-Host "GITHUB_PAT environment variable not found. Please set it first." -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "Obtaining runner registration token from GitHub API..." -ForegroundColor Cyan
-$apiUrl = "https://api.github.com/repos/Dobryachok13/AD_Scripts/actions/runners/registration-token"
-$headers = @{
-    "Authorization" = "Bearer $pat"
-    "Accept" = "application/vnd.github+json"
-}
-
-try {
-    $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers
-    $runnerToken = $response.token
-    Write-Host "Registration token obtained successfully (expires at: $($response.expires_at))" -ForegroundColor Green
-} catch {
-    Write-Host "Failed to obtain registration token: $_" -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "`n[4/6] Checking GitHub Actions Runner..." -ForegroundColor Yellow
+# --- Динамические переменные, как ты и хотел ---
 $runnerDir = "C:\actions-runner"
+$runnerName = "$env:COMPUTERNAME-Runner"  # Вот твоя гениальная идея!
+$serviceName = "GitHubActionsRunner.$runnerName"
 
 Set-Location $Core
 
-if (Test-Path "$runnerDir\.runner") {
-    Write-Host "Runner service already exists, skipping" -ForegroundColor Green
+# 4.1. Проверка, не установлен ли уже раннер
+if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
+    Write-Host "Служба раннера '$serviceName' уже существует. Пропускаем установку." -ForegroundColor Green
 } else {
-    Write-Host "Downloading GitHub Actions runner..." -ForegroundColor Cyan
+    # --- 4.2 Скачивание и распаковка (как и было) ---
+    Write-Host "Скачивание GitHub Actions runner..." -ForegroundColor Cyan
     $runnerUrl = "https://github.com/actions/runner/releases/download/v2.334.0/actions-runner-win-x64-2.334.0.zip"
     $runnerZip = "$env:TEMP\runner.zip"
     Invoke-WebRequest -Uri $runnerUrl -OutFile $runnerZip -UseBasicParsing
     
-    # Создаём папку и распаковываем
     New-Item -ItemType Directory -Path $runnerDir -Force | Out-Null
     Expand-Archive -Path $runnerZip -DestinationPath $runnerDir -Force
     Remove-Item $runnerZip -Force
+    Write-Host "Runner распакован в $runnerDir" -ForegroundColor Green
+
+    # --- 4.3. ПОЛУЧЕНИЕ ТОКЕНА ЧЕРЕЗ API (уже было) ---
+    $pat = [Environment]::GetEnvironmentVariable("GITHUB_PAT", "Machine")
+    if (-not $pat) { Write-Host "GITHUB_PAT не найдена!" -ForegroundColor Red; exit 1 }
     
-    # Регистрируем runner (токен нужно получить из GitHub)
-    Write-Host "Registering runner with GitHub..." -ForegroundColor Cyan
-    
+    Write-Host "Получение токена регистрации через GitHub API..." -ForegroundColor Cyan
+    $apiUrl = "https://api.github.com/repos/Dobryachok13/AD_Scripts/actions/runners/registration-token"
+    $headers = @{ "Authorization" = "Bearer $pat"; "Accept" = "application/vnd.github+json" }
+    try {
+        $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Headers $headers
+        $runnerToken = $response.token
+        Write-Host "Токен получен, истекает: $($response.expires_at)" -ForegroundColor Green
+    } catch { Write-Host "Ошибка получения токена: $_" -ForegroundColor Red; exit 1 }
+
+    # --- 4.4. РЕГИСТРАЦИЯ И КОНФИГУРАЦИЯ (наша магия) ---
+    Write-Host "Регистрация runner'а '$runnerName' на GitHub..." -ForegroundColor Cyan
     Push-Location $runnerDir
-    .\config.cmd --unattended --url $RepoUrl --token $runnerToken --name "DEV-OPS-Runner" --labels "windows,devops" --runasservice
+
+    # Файл .runner
+    @"
+poolId = 1
+poolName = "Default"
+agentId = 0
+agentName = $runnerName
+serverUrl = $RepoUrl
+workFolder = _work
+"@ | Out-File -FilePath .runner -Encoding ascii -Force
+
+    # Файл .credentials
+    @"
+$runnerToken
+"@ | Out-File -FilePath .credentials -Encoding ascii -Force
+
+    # Файл settings.json
+    @"
+{
+  "agentId": 0,
+  "agentName": "$runnerName",
+  "poolId": 1,
+  "poolName": "Default",
+  "serverUrl": "$RepoUrl",
+  "workFolder": "_work",
+  "gitHubUrl": "https://github.com",
+  "apiUrl": "https://api.github.com"
+}
+"@ | Out-File -FilePath settings.json -Encoding utf8 -Force
+
+    Pop-Location
+    Write-Host "Файлы конфигурации созданы." -ForegroundColor Green
+
+    # --- 5. Установка и запуск службы ---
+    Write-Host "Установка и запуск службы '$serviceName'..." -ForegroundColor Cyan
+    Push-Location $runnerDir
+    & .\run.cmd --service install
     Pop-Location
     
-    Write-Host "Runner installed and configured as service" -ForegroundColor Green
+    Start-Service -Name $serviceName
+    Write-Host "Служба '$serviceName' успешно запущена." -ForegroundColor Green
 }
 
 # ===== 5. Настройка планировщика задач =====
