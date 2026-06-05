@@ -1,0 +1,26 @@
+name: Deploy to DEV-OPS
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '*.ps1'
+      - '.github/workflows/deploy.yml'
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, devops]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy scripts to DEV-OPS
+        shell: pwsh
+        run: |
+          $destination = "C:\AD_Scripts"
+          Write-Host "Deploying to $destination..." -ForegroundColor Cyan
+          
+          New-Item -ItemType Directory -Path $destination -Force | Out-Null
+          Copy-Item -Path .\*.ps1 -Destination $destination -Force -Verbose
+          
+          Write-Host "Deployment completed at $(Get-Date)" -ForegroundColor Green
